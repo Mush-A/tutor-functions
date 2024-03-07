@@ -12,9 +12,29 @@ export const sendEmail = functions.firestore
 	.onCreate(async (snapshot, context) => {
 		const booking = snapshot.data();
 
+		const adminsQuerySnapshot = await admin
+			.firestore()
+			.collection("admins")
+			.get();
+
+		const admins = adminsQuerySnapshot.docs;
+
+		logger.log("Admins:", admins);
+
+		const adminsEmailsPromise = admins.map((adminUser) => {
+			logger.log("AdminUser:", adminUser);
+			return admin.auth().getUser(adminUser.id);
+		});
+
+		const adminsEmails = (await Promise.all(adminsEmailsPromise)).map(
+			(adminUser) => adminUser.email
+		);
+
+		logger.log("Admins:", adminsEmails);
+
 		const mailOptions: nodemailer.SendMailOptions = {
 			from: "iknowatutor@gmail.com",
-			to: booking.email,
+			to: [booking.email, ...adminsEmails],
 			subject: "Let's Schedule Your Demo Session! 📅 - Iknowatutor.com",
 			html: bookingTemplate({
 				firstName: booking.firstName,
@@ -46,6 +66,23 @@ export const assignStudentRole = functions.firestore
 			logger.log("Student role assigned to:", user.email);
 		} catch (e) {
 			logger.error("Error assigning student role:", e);
+		}
+	});
+
+export const assignAdminRole = functions.firestore
+	.document("admins/{adminId}")
+	.onCreate(async (snapshot, context) => {
+		try {
+			const adminUser = snapshot.data();
+			logger.log("Admin:", adminUser);
+			const user = await admin.auth().getUser(context.params.adminId);
+			logger.log("User:", user);
+			await admin.auth().setCustomUserClaims(user.uid, {
+				admin: true,
+			});
+			logger.log("Admin role assigned to:", user.email);
+		} catch (e) {
+			logger.error("Error assigning admin role:", e);
 		}
 	});
 
